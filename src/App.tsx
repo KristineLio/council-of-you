@@ -58,6 +58,7 @@ export default function App() {
   const [lastMutiny, setLastMutiny] = useState(false);
   const [defense, setDefense] = useState<DefenseReason | undefined>();
   const [defenseBeat, setDefenseBeat] = useState(0);
+  const [showCustom, setShowCustom] = useState(false);
   const canNativeShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
 
   useEffect(() => {
@@ -95,9 +96,9 @@ export default function App() {
     const first = window.setTimeout(() => {
       setThinking(false);
       setVisibleTurns(1);
-    }, 420);
+    }, isDemo ? 250 : 420);
     return () => window.clearTimeout(first);
-  }, [stage, turns]);
+  }, [stage, turns, isDemo]);
 
   useEffect(() => {
     if (stage !== "debate") return;
@@ -106,7 +107,7 @@ export default function App() {
     const pause = window.setTimeout(() => {
       setThinking(false);
       setVisibleTurns((n) => Math.min(n + 1, turns.length));
-    }, isDemo ? 1200 : 1500);
+    }, isDemo ? 650 : 1500);
     return () => window.clearTimeout(pause);
   }, [stage, visibleTurns, turns.length, isDemo]);
 
@@ -226,15 +227,17 @@ export default function App() {
     if (stage !== "mutiny") return;
     setMutinyBeat(0);
     setMutinyTitle(false);
+    const mutinyStart = isDemo ? 480 : 600;
+    const mutinyGap = isDemo ? 625 : 750;
     const timers: number[] = [];
-    timers.push(window.setTimeout(() => setMutinyBeat(1), 600));
+    timers.push(window.setTimeout(() => setMutinyBeat(1), mutinyStart));
     mutinyScript.forEach((_, i) => {
       if (i === 0) return;
-      timers.push(window.setTimeout(() => setMutinyBeat(i + 1), 600 + i * 750));
+      timers.push(window.setTimeout(() => setMutinyBeat(i + 1), mutinyStart + i * mutinyGap));
     });
-    timers.push(window.setTimeout(() => setMutinyTitle(true), 600 + mutinyScript.length * 750));
+    timers.push(window.setTimeout(() => setMutinyTitle(true), mutinyStart + mutinyScript.length * mutinyGap));
     return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [stage, mutinyScript.length]);
+  }, [stage, mutinyScript.length, isDemo]);
 
   const remembered = whatTheyRemember(memory, insights);
   const dissentSpeaker = PERSONAS.find((p) => p.id === dissent.speaker)!;
@@ -309,6 +312,25 @@ What would your future selves say?`;
   const shown = turns.slice(0, visibleTurns);
   const active = shown[shown.length - 1];
   const allShown = visibleTurns >= turns.length && turns.length > 0;
+
+  useEffect(() => {
+    if (!isDemo || stage !== "debate" || !allShown) return;
+    const t = window.setTimeout(() => setStage("vote"), 450);
+    return () => window.clearTimeout(t);
+  }, [isDemo, stage, allShown]);
+
+  useEffect(() => {
+    if (!isDemo || stage !== "vote") return;
+    const t = window.setTimeout(() => setStage("dissent"), 1500);
+    return () => window.clearTimeout(t);
+  }, [isDemo, stage]);
+
+  useEffect(() => {
+    if (!isDemo || stage !== "dissent") return;
+    const t = window.setTimeout(() => setStage("verdict"), 2000);
+    return () => window.clearTimeout(t);
+  }, [isDemo, stage]);
+
   const cue = memoryCue(insights);
   const landCue = landingMemoryLine(insights, memory);
   const disagreement = biggestDisagreement(priorities, result);
@@ -319,7 +341,7 @@ What would your future selves say?`;
         <div>
           <p className="text-[11px] tracking-[0.28em] text-[#c9a86a]">THE COUNCIL OF YOU</p>
           <h1 className="mt-2 font-serif text-4xl leading-none md:text-5xl">Five versions of you. One decision.</h1>
-          <p className="mt-3 max-w-lg text-[#9a9488]">They'll argue. They'll vote. And they'll remember when you overrule them.</p>
+          <p className="mt-3 max-w-lg text-[#9a9488]">They'll argue. They'll vote. Overrule them, and they might revolt.</p>
         </div>
         {landCue && stage === "input" && (
           <div className="rounded-full border border-[#c9a86a]/40 px-3 py-1 text-[10px] tracking-[0.16em] text-[#c9a86a]">
@@ -330,57 +352,72 @@ What would your future selves say?`;
 
       {stage === "input" && (
         <section className="fade-up space-y-8">
-          <div className="hidden gap-3 md:flex">
+          <div className="space-y-3">
+            <button type="button" onClick={startDemo} className="w-full rounded-full bg-[#ece6d8] px-6 py-4 text-lg font-semibold tracking-[0.04em] text-[#08090d]">
+              TRY THE 20-SECOND DEMO
+            </button>
+            <p className="text-center text-sm text-[#7a7468]">No setup. See the Council turn on you.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
             {PERSONAS.map((p) => (
-              <div key={p.id} className="flex-1 rounded-2xl border border-white/10 p-3">
-                <p className="text-sm font-semibold">{p.name}</p>
-                <p className="mt-1 text-[11px] text-[#9a9488]">{p.subtitle}</p>
+              <div key={p.id} className="rounded-xl border border-white/10 p-2">
+                <p className="text-xs font-semibold leading-tight">{p.name}</p>
+                <p className="mt-1 text-[10px] leading-snug text-[#9a9488]">{p.subtitle}</p>
               </div>
             ))}
           </div>
-          <label className="block">
-            <span className="text-xs uppercase tracking-[0.18em] text-[#9a9488]">The decision</span>
-            <textarea
-              value={decision}
-              onChange={(e) => setDecision(e.target.value)}
-              rows={3}
-              className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-white/5 p-4 font-serif text-2xl outline-none focus:border-[#c9a86a]"
-              placeholder="Should I…?"
-            />
-            <p className="mt-2 text-sm text-[#7a7468]">Type a real decision, or try the demo first.</p>
-          </label>
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-[#9a9488]">Priorities</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {PRIORITIES.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => togglePriority(p)}
-                  className={`rounded-full border px-3 py-1.5 text-sm ${priorities.includes(p) ? "border-[#c9a86a] bg-[#c9a86a]/15 text-[#ece6d8]" : "border-white/10 text-[#9a9488]"}`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
+          <div className="flex items-center gap-3 text-[10px] tracking-[0.28em] text-[#9a9488]">
+            <span className="h-px flex-1 bg-white/10" />
+            OR
+            <span className="h-px flex-1 bg-white/10" />
           </div>
-          <label className="block">
-            <span className="text-xs uppercase tracking-[0.18em] text-[#9a9488]">Risk tolerance</span>
-            <div className="mt-3 flex items-center justify-between text-[11px] tracking-[0.2em] text-[#9a9488]">
-              <span>SAFE</span>
-              <span className="text-[#c9a86a]">{risk}</span>
-              <span>RECKLESS</span>
+          {!showCustom && (
+            <button type="button" onClick={() => setShowCustom(true)} className="w-full rounded-full border border-white/20 px-6 py-3 text-sm tracking-[0.12em] text-[#ece6d8]">
+              ASK MY OWN DECISION
+            </button>
+          )}
+          {showCustom && (
+            <div className="fade-up space-y-8">
+              <label className="block">
+                <span className="text-xs uppercase tracking-[0.18em] text-[#9a9488]">The decision</span>
+                <textarea
+                  value={decision}
+                  onChange={(e) => setDecision(e.target.value)}
+                  rows={3}
+                  className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-white/5 p-4 font-serif text-2xl outline-none focus:border-[#c9a86a]"
+                  placeholder="Should I…?"
+                />
+                <p className="mt-2 text-sm text-[#7a7468]">Type a real decision, or try the demo first.</p>
+              </label>
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#9a9488]">Priorities</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {PRIORITIES.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => togglePriority(p)}
+                      className={`rounded-full border px-3 py-1.5 text-sm ${priorities.includes(p) ? "border-[#c9a86a] bg-[#c9a86a]/15 text-[#ece6d8]" : "border-white/10 text-[#9a9488]"}`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <label className="block">
+                <span className="text-xs uppercase tracking-[0.18em] text-[#9a9488]">Risk tolerance</span>
+                <div className="mt-3 flex items-center justify-between text-[11px] tracking-[0.2em] text-[#9a9488]">
+                  <span>SAFE</span>
+                  <span className="text-[#c9a86a]">{risk}</span>
+                  <span>RECKLESS</span>
+                </div>
+                <input type="range" min={0} max={100} value={risk} onChange={(e) => setRisk(Number(e.target.value))} className="mt-2 w-full accent-[#c9a86a]" />
+              </label>
+              <button type="button" onClick={convene} className="w-full rounded-full bg-[#ece6d8] px-6 py-3 font-medium text-[#08090d]">
+                CONVENE THE COUNCIL
+              </button>
             </div>
-            <input type="range" min={0} max={100} value={risk} onChange={(e) => setRisk(Number(e.target.value))} className="mt-2 w-full accent-[#c9a86a]" />
-          </label>
-          <div className="flex flex-wrap gap-3">
-            <button type="button" onClick={convene} className="rounded-full bg-[#ece6d8] px-6 py-3 font-medium text-[#08090d]">
-              CONVENE THE COUNCIL
-            </button>
-            <button type="button" onClick={startDemo} className="rounded-full border border-[#c9a86a] px-6 py-3 text-[#c9a86a]">
-              TRY A DEMO
-            </button>
-          </div>
+          )}
         </section>
       )}
 
@@ -458,17 +495,27 @@ What would your future selves say?`;
             <p className="text-[11px] tracking-[0.22em] text-[#e07a5f]">COUNCIL READ</p>
             <p className="mt-3 font-serif text-2xl leading-snug">{truth}</p>
           </div>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <button type="button" onClick={listen} className="rounded-full bg-[#ece6d8] px-6 py-3 font-medium text-[#08090d]">
-              Listen
-            </button>
-            <button
-              type="button"
-              onClick={startOverrule}
-              className="rounded-full border border-[#e07a5f]/50 px-6 py-3 text-[#e07a5f]"
-            >
-              OVERRULE THE COUNCIL
-            </button>
+          {isDemo && <p className="mt-8 text-sm text-[#9a9488]">Their vote isn't binding.</p>}
+          <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
+            {isDemo ? (
+              <>
+                <button type="button" onClick={startOverrule} className="w-full rounded-full bg-[#ece6d8] px-6 py-3 font-semibold text-[#08090d] sm:w-auto">
+                  OVERRULE THE COUNCIL →
+                </button>
+                <button type="button" onClick={listen} className="w-full rounded-full border border-white/20 px-6 py-3 text-sm text-[#9a9488] sm:w-auto">
+                  LISTEN TO THEM
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={listen} className="rounded-full bg-[#ece6d8] px-6 py-3 font-medium text-[#08090d]">
+                  Listen
+                </button>
+                <button type="button" onClick={startOverrule} className="rounded-full border border-[#e07a5f]/50 px-6 py-3 text-[#e07a5f]">
+                  OVERRULE THE COUNCIL
+                </button>
+              </>
+            )}
           </div>
         </section>
       )}
@@ -477,7 +524,13 @@ What would your future selves say?`;
         <section className="fade-up mutiny-vignette py-8 text-center">
           <CouncilRing activeId={mutinyScript[Math.max(0, mutinyBeat - 1)]?.speaker} decision={decision} mutiny />
           {mutinyBeat === 0 && <p className="mt-8 font-serif text-6xl text-[#ece6d8]">&nbsp;</p>}
-          {mutinyBeat >= 1 && !mutinyTitle && (
+          {mutinyBeat === 1 && !mutinyTitle && mutinyScript[0] && (
+            <div className="mt-10 mb-8">
+              <p className="text-xs tracking-[0.28em] text-[#9a9488]">{personaName(mutinyScript[0].speaker).toUpperCase()}</p>
+              <p className="mt-6 font-serif text-5xl leading-none md:text-6xl">{mutinyScript[0].text}</p>
+            </div>
+          )}
+          {mutinyBeat > 1 && !mutinyTitle && (
             <div className="mt-4 space-y-3">
               {mutinyScript.slice(0, mutinyBeat).map((line, i) => (
                 <p key={i} className={i === mutinyBeat - 1 ? "font-serif text-4xl md:text-5xl" : "text-sm text-[#9a9488]"}>
@@ -642,6 +695,7 @@ What would your future selves say?`;
                 setCopied(null);
                 setDidMutiny(false);
                 setDefense(undefined);
+                setShowCustom(false);
               }}
               className="w-full rounded-full border border-white/15 py-3"
             >
