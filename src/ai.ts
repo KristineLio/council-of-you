@@ -177,8 +177,6 @@ export async function generateCouncil(input: CouncilInput, votes: Record<Persona
       signal: AbortSignal.timeout(15000),
       headers: {
         "Content-Type": "application/json",
-        Authorization:
-          "Bearer Fe26.2*1*f2653aadebb468ef798c9f13850c1735fdef4ef8a5d988f9ac18f8c9cacb75fa*z5LkZs8IqgBd97E0BSZ_8Q*OizBNP4OwlQhIJFvh2zy_30TJtKukBHah_VdPLboQiM_rHKhCYJOq72wg-B__E4D*1822657560848*f27c10019a6b0ac57e096c18d09160485f3dfc6cfd1ced65a5724ea78710da92*OW_Pmni-VamKDF-WB7T4JYe-qToo7gnDr8JRBkH4rb4~2",
       },
       body: JSON.stringify({
         messages: [
