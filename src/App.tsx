@@ -15,8 +15,26 @@ import { generateCouncil, localCouncil, type AiCouncilResponse } from "./ai";
 import { debateTurns, type DebateTurn } from "./debate";
 import { deriveInsights, landingMemoryLine, memoryCue, personaName, voteLabel, whatTheyRemember } from "./memory";
 import { biggestDisagreement, mostPersuasive, tally, votesFor } from "./verdict";
+import {
+  DEFENSE_CHOICES,
+  defenseLabel,
+  defenseReply,
+  mutinyLines,
+  shouldMutiny,
+  type DefenseReason,
+} from "./mutiny";
 
-type Stage = "input" | "debate" | "vote" | "dissent" | "verdict" | "why" | "consequence" | "receipt";
+type Stage =
+  | "input"
+  | "debate"
+  | "vote"
+  | "dissent"
+  | "verdict"
+  | "mutiny"
+  | "defense"
+  | "why"
+  | "consequence"
+  | "receipt";
 
 export default function App() {
   const [stage, setStage] = useState<Stage>("input");
@@ -34,6 +52,12 @@ export default function App() {
   const [showNoted, setShowNoted] = useState(false);
   const [aiPack, setAiPack] = useState<AiCouncilResponse | null>(null);
   const [calling, setCalling] = useState("");
+  const [mutinyBeat, setMutinyBeat] = useState(0);
+  const [mutinyTitle, setMutinyTitle] = useState(false);
+  const [didMutiny, setDidMutiny] = useState(false);
+  const [lastMutiny, setLastMutiny] = useState(false);
+  const [defense, setDefense] = useState<DefenseReason | undefined>();
+  const [defenseBeat, setDefenseBeat] = useState(0);
   const canNativeShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
 
   useEffect(() => {
@@ -104,6 +128,10 @@ export default function App() {
     setCopied(null);
     setAiPack(null);
     setCalling("");
+    setDidMutiny(false);
+    setDefense(undefined);
+    setMutinyBeat(0);
+    setMutinyTitle(false);
     setStage("debate");
   }
 
@@ -114,6 +142,10 @@ export default function App() {
     setOverrideReason(undefined);
     setCopied(null);
     setAiPack(null);
+    setDidMutiny(false);
+    setDefense(undefined);
+    setMutinyBeat(0);
+    setMutinyTitle(false);
     setCalling("Calling the Council…");
     setStage("debate");
     window.setTimeout(() => setCalling((c) => (c ? "Chaos You is already interrupting." : c)), 700);
@@ -153,8 +185,32 @@ export default function App() {
   function listen() {
     setAction("accepted");
     setOverrideReason(undefined);
+    setDidMutiny(false);
     setStage("consequence");
     window.setTimeout(() => persist("accepted"), 1100);
+  }
+
+  function startOverrule() {
+    setAction("ignored");
+    setShowNoted(false);
+    const fire = shouldMutiny({
+      isDemo,
+      decision,
+      consensus: result.confidence,
+      insights,
+      records: memory,
+      lastMutiny,
+    });
+    if (!fire) {
+      setDidMutiny(false);
+      setStage("why");
+      return;
+    }
+    setDidMutiny(true);
+    setLastMutiny(true);
+    setMutinyBeat(0);
+    setMutinyTitle(false);
+    setStage("mutiny");
   }
 
   function pickReason(id: OverrideReason) {
@@ -163,10 +219,47 @@ export default function App() {
     window.setTimeout(() => persist("ignored", id), 1100);
   }
 
+  const mutinyScript = mutinyLines(insights, isDemo, decision);
+  const defenseLines = defense ? defenseReply(defense) : [];
+
+  useEffect(() => {
+    if (stage !== "mutiny") return;
+    setMutinyBeat(0);
+    setMutinyTitle(false);
+    const timers: number[] = [];
+    timers.push(window.setTimeout(() => setMutinyBeat(1), 600));
+    mutinyScript.forEach((_, i) => {
+      if (i === 0) return;
+      timers.push(window.setTimeout(() => setMutinyBeat(i + 1), 600 + i * 750));
+    });
+    timers.push(window.setTimeout(() => setMutinyTitle(true), 600 + mutinyScript.length * 750));
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [stage, mutinyScript.length]);
+
   const remembered = whatTheyRemember(memory, insights);
   const dissentSpeaker = PERSONAS.find((p) => p.id === dissent.speaker)!;
 
-  const shareBody = `5 VERSIONS OF ME VOTED.
+  const shareBody = didMutiny
+    ? `MY COUNCIL MUTINIED.
+
+${decision}
+
+THEM: ${result.verdict}
+ME: I OVERRULED THEM.
+
+Then they asked:
+"What answer were you hoping we'd give you?"
+
+Me:
+"${defense ? defenseLabel(defense) : ""}."
+
+${dissentSpeaker.name}:
+"${dissent.text}"
+
+They'll remember this.
+
+What would your future selves ask you?`
+    : `5 VERSIONS OF ME VOTED.
 
 ${decision}
 
@@ -371,16 +464,76 @@ What would your future selves say?`;
             </button>
             <button
               type="button"
-              onClick={() => {
-                setAction("ignored");
-                setShowNoted(false);
-                setStage("why");
-              }}
+              onClick={startOverrule}
               className="rounded-full border border-[#e07a5f]/50 px-6 py-3 text-[#e07a5f]"
             >
               OVERRULE THE COUNCIL
             </button>
           </div>
+        </section>
+      )}
+
+      {stage === "mutiny" && (
+        <section className="fade-up mutiny-vignette py-8 text-center">
+          <CouncilRing activeId={mutinyScript[Math.max(0, mutinyBeat - 1)]?.speaker} decision={decision} mutiny />
+          {mutinyBeat === 0 && <p className="mt-8 font-serif text-6xl text-[#ece6d8]">&nbsp;</p>}
+          {mutinyBeat >= 1 && !mutinyTitle && (
+            <div className="mt-4 space-y-3">
+              {mutinyScript.slice(0, mutinyBeat).map((line, i) => (
+                <p key={i} className={i === mutinyBeat - 1 ? "font-serif text-4xl md:text-5xl" : "text-sm text-[#9a9488]"}>
+                  <span className="mr-2 text-[10px] tracking-[0.16em]">{personaName(line.speaker).toUpperCase()}</span>
+                  {line.text}
+                </p>
+              ))}
+            </div>
+          )}
+          {mutinyTitle && (
+            <>
+              <p className="mt-6 text-xs tracking-[0.24em] text-[#c9a86a]">THE COUNCIL HAS CALLED AN EMERGENCY SESSION</p>
+              <p className="mt-4 font-serif text-2xl">One question before you overrule us.</p>
+              <button type="button" onClick={() => { setDefenseBeat(0); setStage("defense"); }} className="mt-8 rounded-full bg-[#ece6d8] px-8 py-3 font-medium text-[#08090d]">
+                DEFEND YOURSELF
+              </button>
+            </>
+          )}
+        </section>
+      )}
+
+      {stage === "defense" && (
+        <section className="fade-up py-10 text-center">
+          {defenseBeat === 0 && !defense && (
+            <>
+              <h2 className="font-serif text-3xl md:text-4xl">What answer were you hoping we'd give you?</h2>
+              <div className="mx-auto mt-8 grid max-w-lg gap-3">
+                {DEFENSE_CHOICES.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      setDefense(c.id);
+                      setDefenseBeat(1);
+                    }}
+                    className="rounded-2xl border border-white/15 px-4 py-3 text-left hover:border-[#c9a86a]"
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {defense && defenseBeat >= 1 && (
+            <div className="space-y-4">
+              {defenseLines.map((line, i) => (
+                <p key={i} className="font-serif text-2xl">
+                  <span className="mr-2 text-[10px] tracking-[0.16em] text-[#9a9488]">{personaName(line.speaker).toUpperCase()}</span>
+                  {line.text}
+                </p>
+              ))}
+              <button type="button" onClick={() => setStage("why")} className="mt-8 rounded-full bg-[#ece6d8] px-8 py-3 font-medium text-[#08090d]">
+                Continue
+              </button>
+            </div>
+          )}
         </section>
       )}
 
@@ -421,7 +574,7 @@ What would your future selves say?`;
 
       {stage === "receipt" && action && (
         <section className="fade-up rounded-3xl border border-[#c9a86a]/50 bg-black/55 p-6 md:p-8">
-          <p className="text-[11px] tracking-[0.28em] text-[#c9a86a]">5 VERSIONS OF ME VOTED.</p>
+          <p className="text-[11px] tracking-[0.28em] text-[#c9a86a]">{didMutiny ? "MY COUNCIL MUTINIED." : "5 VERSIONS OF ME VOTED."}</p>
           <p className="mt-3 font-serif text-3xl leading-tight md:text-4xl">{decision}</p>
           <p className="mt-2 text-lg tracking-[0.14em] text-[#e07a5f]">{action === "ignored" ? "I OVERRULED THEM." : "I LISTENED."}</p>
           <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 border-y border-white/10 py-4 text-sm">
@@ -454,7 +607,16 @@ What would your future selves say?`;
           <p className="mt-1 text-sm">{overrideReason ? `Last time, you said ${reasonLabel(overrideReason).toLowerCase()}.` : remembered}</p>
           <p className="mt-5 text-[10px] uppercase tracking-[0.22em] text-[#e07a5f]">Council Read</p>
           <p className="mt-2 font-serif text-2xl leading-snug">{truth}</p>
-          <p className="mt-6 text-center text-[11px] tracking-[0.22em] text-[#c9a86a]">WHAT WOULD YOUR FUTURE SELVES SAY?</p>
+          {didMutiny && defense && (
+            <>
+              <p className="mt-4 text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Emergency Session</p>
+              <p className="mt-1 font-serif text-xl">I wanted {defenseLabel(defense).toLowerCase()}.</p>
+            </>
+          )}
+          <p className="mt-6 text-center text-[11px] tracking-[0.22em] text-[#c9a86a]">
+            {didMutiny ? "THEY ASKED WHAT ANSWER I WANTED." : "WHAT WOULD YOUR FUTURE SELVES SAY?"}
+          </p>
+          {didMutiny && <p className="mt-2 text-center text-[11px] text-[#9a9488]">What would your future selves ask you?</p>}
           <p className="mt-1 text-center text-[10px] tracking-[0.28em] text-[#9a9488]">THE COUNCIL OF YOU</p>
           <div className="mt-6 flex flex-wrap gap-2">
             <button type="button" onClick={() => copyText("result")} className="flex-1 rounded-full bg-[#ece6d8] py-3 text-sm font-medium text-[#08090d]">
@@ -478,6 +640,8 @@ What would your future selves say?`;
                 setAction(null);
                 setOverrideReason(undefined);
                 setCopied(null);
+                setDidMutiny(false);
+                setDefense(undefined);
               }}
               className="w-full rounded-full border border-white/15 py-3"
             >
@@ -507,14 +671,16 @@ function CouncilRing({
   activeId,
   replyTo,
   decision,
+  mutiny,
 }: {
   activeId?: string;
   replyTo?: string;
   decision: string;
+  mutiny?: boolean;
 }) {
   return (
     <div className="mb-8">
-      <div className="relative mx-auto h-44 max-w-md overflow-hidden md:h-52">
+      <div className={`relative mx-auto h-44 max-w-md overflow-hidden md:h-52 ${mutiny ? "ring-tight" : ""}`}>
         {RING.map((slot) => {
           const p = PERSONAS.find((x) => x.id === slot.id)!;
           const on = activeId === p.id;

@@ -43,7 +43,16 @@ body {
 .fade-up { animation: fade-up 0.55s ease both; }
 .speaker-ring { animation: pulse-ring 1.6s ease-out infinite; }
 .warn-pulse { animation: warn-pulse 0.8s ease-out; border-radius: 24px; }
+.mutiny-vignette {
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.55) 100%);
+}
+.ring-tight > div {
+  transform: scale(0.86);
+  transform-origin: center;
+  transition: transform 0.7s ease;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .fade-up, .speaker-ring { animation: none; }
+  .ring-tight > div { transform: none; }
 }
