@@ -26,13 +26,43 @@ export type MemoryRecord = {
 };
 
 const KEY = "council-of-you-memory-v1";
+const VALID_VOTES: Vote[] = ["do_it", "dont", "wait", "hybrid"];
+const LEGACY: Record<string, Vote> = { yes: "do_it", no: "dont", abstain: "wait" };
+
+function normalizeVote(v: unknown): Vote {
+  if (typeof v === "string" && VALID_VOTES.includes(v as Vote)) return v as Vote;
+  if (typeof v === "string" && LEGACY[v]) return LEGACY[v];
+  return "hybrid";
+}
 
 export function loadMemory(): MemoryRecord[] {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((r: Record<string, unknown>) => {
+      const votesIn = (r.votes ?? {}) as Record<string, unknown>;
+      const votes = {
+        safe: normalizeVote(votesIn.safe),
+        chaos: normalizeVote(votesIn.chaos),
+        success: normalizeVote(votesIn.success),
+        regret: normalizeVote(votesIn.regret),
+        later: normalizeVote(votesIn.later),
+      };
+      const action: UserAction = r.action === "ignored" ? "ignored" : "accepted";
+      const confidence = typeof r.confidence === "number" && r.confidence > 0 && r.confidence < 100 ? r.confidence : 76;
+      return {
+        decision: String(r.decision ?? ""),
+        priorities: Array.isArray(r.priorities) ? r.priorities.map(String) : [],
+        risk: typeof r.risk === "number" ? r.risk : 50,
+        verdict: String(r.verdict ?? "HYBRID"),
+        action,
+        timestamp: String(r.timestamp ?? new Date().toISOString()),
+        votes,
+        confidence,
+      };
+    });
   } catch {
     return [];
   }

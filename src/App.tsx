@@ -13,9 +13,12 @@ export default function App() {
   const [risk, setRisk] = useState(48);
   const [isDemo, setIsDemo] = useState(false);
   const [visibleTurns, setVisibleTurns] = useState(0);
+  const [thinking, setThinking] = useState(false);
   const [memory, setMemory] = useState<MemoryRecord[]>([]);
   const [action, setAction] = useState<UserAction | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"result" | "share" | null>(null);
+  const [ignoreBeat, setIgnoreBeat] = useState(0);
+  const canNativeShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
 
   useEffect(() => {
     setMemory(loadMemory());
@@ -27,25 +30,37 @@ export default function App() {
     [decision, isDemo, memory, priorities, risk],
   );
   const votes = useMemo(() => votesFor(decision, risk, priorities, isDemo), [decision, risk, priorities, isDemo]);
-  const result = useMemo(() => tally(votes), [votes]);
+  const result = useMemo(() => tally(votes, isDemo), [votes, isDemo]);
   const truth = useMemo(
-    () => uncomfortableTruth({ isDemo, priorities, risk, insights, winner: result.winner }),
-    [isDemo, priorities, risk, insights, result.winner],
+    () => uncomfortableTruth({ isDemo, decision, priorities, risk, insights, winner: result.winner }),
+    [isDemo, decision, priorities, risk, insights, result.winner],
+  );
+  const persuasive = useMemo(
+    () => mostPersuasive(votes, result.winner, turns, priorities, insights),
+    [votes, result.winner, turns, priorities, insights],
   );
 
   useEffect(() => {
     if (stage !== "debate") return;
     setVisibleTurns(0);
-    const first = window.setTimeout(() => setVisibleTurns(1), 500);
+    setThinking(true);
+    const first = window.setTimeout(() => {
+      setThinking(false);
+      setVisibleTurns(1);
+    }, 420);
     return () => window.clearTimeout(first);
   }, [stage, turns]);
 
   useEffect(() => {
     if (stage !== "debate") return;
     if (visibleTurns === 0 || visibleTurns >= turns.length) return;
-    const t = window.setTimeout(() => setVisibleTurns((n) => Math.min(n + 1, turns.length)), 1600);
-    return () => window.clearTimeout(t);
-  }, [stage, visibleTurns, turns.length]);
+    setThinking(true);
+    const pause = window.setTimeout(() => {
+      setThinking(false);
+      setVisibleTurns((n) => Math.min(n + 1, turns.length));
+    }, isDemo ? 1550 : 1680);
+    return () => window.clearTimeout(pause);
+  }, [stage, visibleTurns, turns.length, isDemo]);
 
   function togglePriority(p: string) {
     setPriorities((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]));
@@ -57,7 +72,7 @@ export default function App() {
     setPriorities(["Ambition", "Rest"]);
     setRisk(62);
     setAction(null);
-    setCopied(false);
+    setCopied(null);
     setStage("debate");
   }
 
@@ -65,33 +80,58 @@ export default function App() {
     if (!decision.trim()) return;
     setIsDemo(false);
     setAction(null);
-    setCopied(false);
+    setCopied(null);
     setStage("debate");
+  }
+
+  function persist(chosen: UserAction) {
+    const rec: MemoryRecord = {
+      decision: decision.trim(),
+      priorities,
+      risk,
+      verdict: result.verdict,
+      action: chosen,
+      timestamp: new Date().toISOString(),
+      votes,
+      confidence: result.confidence,
+    };
+    const next = [rec, ...memory].slice(0, 40);
+    setMemory(next);
+    saveMemory(next);
+    setStage("receipt");
   }
 
   function choose(chosen: UserAction) {
     setAction(chosen);
+    setIgnoreBeat(0);
     setStage("consequence");
-    window.setTimeout(() => {
-      const rec: MemoryRecord = {
-        decision: decision.trim(),
-        priorities,
-        risk,
-        verdict: result.verdict,
-        action: chosen,
-        timestamp: new Date().toISOString(),
-        votes,
-        confidence: result.confidence,
-      };
-      const next = [rec, ...memory].slice(0, 40);
-      setMemory(next);
-      saveMemory(next);
-      setStage("receipt");
-    }, 800);
+    if (chosen === "accepted") {
+      window.setTimeout(() => persist(chosen), 900);
+      return;
+    }
+    window.setTimeout(() => setIgnoreBeat(1), 350);
+    window.setTimeout(() => persist(chosen), 950);
   }
 
-  async function copyResult() {
-    const text = `MY COUNCIL EXPOSED ME
+  const shareBody = `MY COUNCIL EXPOSED ME
+
+Decision: ${decision}
+Council: ${result.verdict} (${result.confidence}%)
+Me: ${action === "ignored" ? "IGNORED" : "ACCEPTED"}
+Pattern: ${patternLine()}
+
+What would your Council say?`;
+
+  function patternLine() {
+    const p = patternFromRecords(memory, insights);
+    if (/permission|already chosen|already decided/i.test(truth)) {
+      return "I keep asking for permission after I've already decided.";
+    }
+    return p;
+  }
+
+  async function copyText(kind: "result" | "share") {
+    const resultText = `MY COUNCIL EXPOSED ME
 
 Decision: ${decision}
 Verdict: ${result.verdict}
@@ -103,10 +143,18 @@ ${truth}
 
 What would your Council say?`;
     try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
+      await navigator.clipboard.writeText(kind === "share" ? shareBody : resultText);
+      setCopied(kind);
     } catch {
-      setCopied(false);
+      setCopied(null);
+    }
+  }
+
+  async function nativeShare() {
+    try {
+      await navigator.share({ text: shareBody, title: "The Council of You" });
+    } catch {
+      /* user cancelled */
     }
   }
 
@@ -115,9 +163,9 @@ What would your Council say?`;
   const allShown = visibleTurns >= turns.length && turns.length > 0;
   const cue = memoryCue(insights);
   const landCue = landingMemoryLine(insights);
-  const persuasive = mostPersuasive(votes, result.winner);
   const disagreement = biggestDisagreement(priorities, result);
   const pattern = patternFromRecords(memory, insights);
+  const nextIgnored = insights.ignoredCount + 1;
 
   return (
     <div className="mx-auto min-h-screen max-w-3xl px-5 pb-24 pt-10">
@@ -126,6 +174,9 @@ What would your Council say?`;
           <p className="text-[11px] tracking-[0.28em] text-[#c9a86a]">THE COUNCIL OF YOU</p>
           <h1 className="mt-2 font-serif text-4xl leading-none md:text-5xl">Five versions of you. One decision.</h1>
           <p className="mt-3 max-w-lg text-[#9a9488]">They'll argue. They'll vote. And they'll remember when you ignore them.</p>
+          {stage === "input" && (
+            <p className="mt-2 max-w-lg text-sm text-[#7a7468]">Ask once. Ignore them if you want. They'll remember next time.</p>
+          )}
         </div>
         {landCue && stage === "input" && (
           <div className="rounded-full border border-[#c9a86a]/40 px-3 py-1 text-[10px] tracking-[0.16em] text-[#c9a86a]">
@@ -178,7 +229,12 @@ What would your Council say?`;
 
       {stage === "debate" && (
         <section className="fade-up">
-          <p className="mb-4 font-serif text-2xl italic text-[#c9a86a]">{decision}</p>
+          <div className="mb-4 flex items-end justify-between gap-3">
+            <p className="font-serif text-2xl italic text-[#c9a86a]">{decision}</p>
+            <p className="shrink-0 text-[11px] tracking-[0.18em] text-[#9a9488]">
+              ARGUMENT {Math.max(visibleTurns, 1)} / {turns.length}
+            </p>
+          </div>
           {cue && <p className="mb-6 text-[11px] tracking-[0.22em] text-[#e07a5f]">{cue}</p>}
           <div className="mb-5 flex flex-wrap gap-2">
             {PERSONAS.map((p) => (
@@ -194,10 +250,20 @@ What would your Council say?`;
             {shown.map((turn, i) => (
               <DebateBubble key={i} turn={turn} active={i === shown.length - 1} />
             ))}
+            {thinking && !allShown && (
+              <p className="pl-4 text-[11px] tracking-[0.2em] text-[#9a9488]">thinking…</p>
+            )}
           </div>
           <div className="mt-8 flex flex-wrap gap-3">
             {!allShown && (
-              <button type="button" onClick={() => { setVisibleTurns(turns.length); setStage("vote"); }} className="rounded-full border border-white/20 px-6 py-3 text-sm tracking-[0.16em]">
+              <button
+                type="button"
+                onClick={() => {
+                  setVisibleTurns(turns.length);
+                  setStage("vote");
+                }}
+                className="rounded-full border border-white/20 px-6 py-3 text-sm tracking-[0.16em]"
+              >
                 SKIP TO VOTE
               </button>
             )}
@@ -235,66 +301,80 @@ What would your Council say?`;
             <p className="mt-3 font-serif text-2xl leading-snug">{truth}</p>
           </div>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <button type="button" onClick={() => choose("accepted")} className="rounded-full bg-[#ece6d8] px-6 py-3 font-medium text-[#08090d]">Accept</button>
-            <button type="button" onClick={() => choose("ignored")} className="rounded-full border border-[#e07a5f]/50 px-6 py-3 text-[#e07a5f]">Ignore</button>
+            <button type="button" onClick={() => choose("accepted")} className="rounded-full bg-[#ece6d8] px-6 py-3 font-medium text-[#08090d]">
+              Accept
+            </button>
+            <button type="button" onClick={() => choose("ignored")} className="rounded-full border border-[#e07a5f]/50 px-6 py-3 text-[#e07a5f]">
+              Ignore
+            </button>
           </div>
         </section>
       )}
 
       {stage === "consequence" && action && (
-        <section className={`fade-up text-center ${action === "ignored" ? "warn-pulse" : ""}`}>
-          <p className="text-xs tracking-[0.28em] text-[#c9a86a]">{action === "accepted" ? "VERDICT ACCEPTED." : "DECISION IGNORED."}</p>
-          <p className="mt-6 font-serif text-3xl">
-            {action === "accepted" ? "The Council will remember that you listened." : "The Council will remember this."}
+        <section className={`fade-up py-16 text-center ${action === "ignored" ? "warn-pulse" : ""}`}>
+          <p className="text-xs tracking-[0.28em] text-[#c9a86a]">
+            {action === "accepted" ? "VERDICT ACCEPTED." : "DECISION IGNORED."}
           </p>
+          {action === "accepted" ? (
+            <p className="mt-6 font-serif text-3xl text-[#9a9488]">Noted.</p>
+          ) : (
+            <>
+              {ignoreBeat >= 1 && <p className="mt-6 font-serif text-3xl">The Council will remember this.</p>}
+              {ignoreBeat >= 1 && (
+                <p className="mt-4 text-sm tracking-[0.16em] text-[#e07a5f]">
+                  {insights.ignoredCount >= 1 ? `That's ${nextIgnored}.` : `Ignored verdicts: ${nextIgnored}`}
+                </p>
+              )}
+            </>
+          )}
         </section>
       )}
 
       {stage === "receipt" && action && (
-        <section className="fade-up rounded-3xl border border-[#c9a86a]/50 bg-black/50 p-8">
+        <section className="fade-up rounded-3xl border border-[#c9a86a]/50 bg-black/55 p-6 md:p-8">
           <p className="text-[11px] tracking-[0.28em] text-[#c9a86a]">MY COUNCIL EXPOSED ME</p>
-          <div className="mt-6 space-y-5 text-sm">
+          <p className="mt-3 font-serif text-3xl leading-tight md:text-4xl">{decision}</p>
+          <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 border-y border-white/10 py-4 text-sm">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Decision</p>
-              <p className="mt-1 font-serif text-2xl">{decision}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Council Verdict</p>
-                <p className="mt-1 text-lg tracking-[0.12em]">{result.verdict}</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">My Choice</p>
-                <p className={`mt-1 text-lg tracking-[0.12em] ${action === "ignored" ? "text-[#e07a5f]" : ""}`}>{action === "ignored" ? "IGNORED" : "ACCEPTED"}</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Council Confidence</p>
-                <p className="mt-1 text-lg">{result.confidence}%</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Most Persuasive</p>
-                <p className="mt-1 text-lg">{personaName(persuasive)}</p>
-              </div>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Council Verdict</p>
+              <p className="mt-1 text-lg tracking-[0.12em]">{result.verdict}</p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Biggest Disagreement</p>
-              <p className="mt-1 font-serif text-xl">{disagreement}</p>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">My Choice</p>
+              <p className={`mt-1 text-lg tracking-[0.12em] ${action === "ignored" ? "text-[#e07a5f]" : ""}`}>
+                {action === "ignored" ? "IGNORED" : "ACCEPTED"}
+              </p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Pattern Detected</p>
-              <p className="mt-1">{pattern}</p>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Confidence</p>
+              <p className="mt-1 text-lg">{result.confidence}%</p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-[#e07a5f]">Uncomfortable Truth</p>
-              <p className="mt-1 font-serif text-2xl leading-snug">{truth}</p>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Most Persuasive</p>
+              <p className="mt-1 text-lg">{personaName(persuasive)}</p>
             </div>
           </div>
-          <p className="mt-8 text-center text-[11px] tracking-[0.22em] text-[#c9a86a]">WHAT WOULD YOUR COUNCIL SAY?</p>
-          <p className="mt-2 text-center text-[10px] tracking-[0.28em] text-[#9a9488]">THE COUNCIL OF YOU</p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <button type="button" onClick={copyResult} className="flex-1 rounded-full bg-[#ece6d8] py-3 font-medium text-[#08090d]">
-              {copied ? "COPIED" : "COPY RESULT"}
+          <p className="mt-4 text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Biggest Disagreement</p>
+          <p className="mt-1 font-serif text-xl">{disagreement}</p>
+          <p className="mt-4 text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Pattern Detected</p>
+          <p className="mt-1 text-sm">{pattern}</p>
+          <p className="mt-5 text-[10px] uppercase tracking-[0.22em] text-[#e07a5f]">The Uncomfortable Truth</p>
+          <p className="mt-2 font-serif text-2xl leading-snug">{truth}</p>
+          <p className="mt-6 text-center text-[11px] tracking-[0.22em] text-[#c9a86a]">WHAT WOULD YOUR COUNCIL SAY?</p>
+          <p className="mt-1 text-center text-[10px] tracking-[0.28em] text-[#9a9488]">THE COUNCIL OF YOU</p>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <button type="button" onClick={() => copyText("result")} className="flex-1 rounded-full bg-[#ece6d8] py-3 text-sm font-medium text-[#08090d]">
+              {copied === "result" ? "COPIED" : "COPY RESULT"}
             </button>
+            <button type="button" onClick={() => copyText("share")} className="flex-1 rounded-full border border-[#c9a86a] py-3 text-sm text-[#c9a86a]">
+              {copied === "share" ? "COPIED" : "COPY SHARE CARD"}
+            </button>
+            {canNativeShare && (
+              <button type="button" onClick={nativeShare} className="w-full rounded-full border border-white/15 py-3 text-sm">
+                SHARE
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -303,9 +383,9 @@ What would your Council say?`;
                 setPriorities([]);
                 setIsDemo(false);
                 setAction(null);
-                setCopied(false);
+                setCopied(null);
               }}
-              className="flex-1 rounded-full border border-white/15 py-3"
+              className="w-full rounded-full border border-white/15 py-3"
             >
               NEW DECISION
             </button>
@@ -319,18 +399,21 @@ What would your Council say?`;
 function DebateBubble({ turn, active }: { turn: DebateTurn; active: boolean }) {
   const p = PERSONAS.find((x) => x.id === turn.speaker)!;
   return (
-    <article className={`fade-up rounded-2xl border p-4 ${active ? "speaker-ring border-[#c9a86a] bg-white/8" : "border-white/10 bg-white/4"}`}>
+    <article
+      className={`fade-up rounded-2xl border p-4 transition ${turn.replyTo ? "ml-4 md:ml-8" : ""} ${
+        active ? "speaker-ring border-[#c9a86a] bg-white/8" : "border-white/10 bg-white/4 opacity-70"
+      }`}
+    >
       <div className="mb-2 flex items-center gap-3">
         <span className="grid h-9 w-9 place-items-center rounded-full text-sm font-semibold" style={{ background: p.color + "33", color: p.color }}>
           {p.mark}
         </span>
         <strong>{p.name}</strong>
         {turn.replyTo && (
-          <span className="ml-auto text-[10px] tracking-[0.14em] text-[#9a9488]">replying to {personaName(turn.replyTo)}</span>
+          <span className="ml-auto text-[10px] tracking-[0.14em] text-[#9a9488]">→ {personaName(turn.replyTo)}</span>
         )}
       </div>
       <p className="font-serif text-xl leading-snug text-[#ece6d8]">{turn.text}</p>
     </article>
   );
 }
-
