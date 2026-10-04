@@ -12,16 +12,19 @@ export type DebateTurn = {
 };
 
 export const DEMO_TURNS: DebateTurn[] = [
-  { speaker: "safe", text: "You already have unfinished projects. Starting another one is not a plan.", tone: "calm" },
-  { speaker: "chaos", text: "That sounds like a Monday problem.", replyTo: "safe", tone: "funny" },
-  { speaker: "success", text: "Finish one milestone first. Then earn the right to start another.", tone: "sharp" },
-  { speaker: "chaos", text: "Counterpoint: new repo.", replyTo: "success", tone: "funny" },
-  { speaker: "regret", text: "You know you're going to do it anyway.", tone: "sharp" },
+  { speaker: "safe", text: "You said the last one was your final one.", tone: "calm" },
+  { speaker: "chaos", text: "That was before this one existed.", replyTo: "safe", tone: "funny" },
+  { speaker: "success", text: "Only if we ship something people remember in ten seconds.", tone: "sharp" },
+  { speaker: "safe", text: "You also have other things to finish.", tone: "calm" },
+  { speaker: "chaos", text: "Those things do not have a leaderboard.", replyTo: "safe", tone: "funny" },
+  { speaker: "regret", text: "You know you'd watch the submissions and wish you'd entered.", tone: "sharp" },
   {
     speaker: "later",
-    text: "You won't remember the sensible weekend. You will remember what you actually finished.",
+    text: "You won't remember the sensible weekend. You might remember the win.",
     tone: "reflective",
   },
+  { speaker: "safe", text: "That is exactly how we got here.", replyTo: "chaos", tone: "sharp" },
+  { speaker: "chaos", text: "And yet here we are.", replyTo: "safe", tone: "funny" },
 ];
 
 const THEME_LINES: Record<DecisionTheme, DebateTurn[]> = {
@@ -78,32 +81,35 @@ const THEME_LINES: Record<DecisionTheme, DebateTurn[]> = {
 
 function memoryTurns(insights: MemoryInsights): DebateTurn[] {
   const extra: DebateTurn[] = [];
-  if (insights.ignoredCount >= 1) {
-    extra.push({ speaker: "safe", text: "Last time we told you to slow down. You ignored us.", tone: "sharp" });
-    extra.push({ speaker: "chaos", text: "And yet here we are.", replyTo: "safe", tone: "funny" });
-  }
-  if (insights.ignoredCount >= 3) {
-    extra.push({
-      speaker: "regret",
-      text: "This is the fourth time you have asked for advice after already deciding.",
-      tone: "sharp",
-    });
-  }
-  if (insights.repeatedPriority === "Ambition") {
-    extra.push({
-      speaker: "success",
-      text: "You keep choosing ambition. Stop pretending stability is the deciding factor.",
-      tone: "sharp",
-    });
-  }
-  if (insights.repeatedRiskPattern === "high") {
+  if (insights.lastOverrideReason === "already_decided") {
     extra.push({
       speaker: "safe",
-      text: "Your risk slider has been above 70 three decisions in a row. At some point this stops being analysis.",
-      tone: "calm",
+      text: "Last time you overruled us because you'd already decided. Are we doing that again?",
+      tone: "sharp",
     });
+    extra.push({ speaker: "chaos", text: "To be fair, decisiveness looked good on us.", replyTo: "safe", tone: "funny" });
+  } else if (insights.lastOverrideReason === "worth_the_risk") {
+    extra.push({
+      speaker: "success",
+      text: "Last time you chose risk knowingly. This time, define what makes the risk worth taking.",
+      tone: "sharp",
+    });
+  } else if (insights.lastOverrideReason === "missed_something") {
+    extra.push({
+      speaker: "regret",
+      text: "You said we missed something last time. Tell us what you're not saying now.",
+      tone: "sharp",
+    });
+  } else if (insights.lastOverrideReason === "curiosity") {
+    extra.push({ speaker: "chaos", text: "Finally. A consistent philosophy.", tone: "funny" });
+    extra.push({ speaker: "safe", text: "That is not a philosophy.", replyTo: "chaos", tone: "sharp" });
+  } else if (insights.lastAccepted) {
+    extra.push({ speaker: "success", text: "Last time you actually listened to us.", tone: "calm" });
+    extra.push({ speaker: "chaos", text: "A dark day.", replyTo: "success", tone: "funny" });
+  } else if (insights.ignoredCount >= 1) {
+    extra.push({ speaker: "safe", text: "Last time we told you to slow down. You overruled us.", tone: "sharp" });
   }
-  return extra;
+  return extra.slice(0, 2);
 }
 
 export function debateTurns(
@@ -111,7 +117,7 @@ export function debateTurns(
   isDemo: boolean,
   records: MemoryRecord[],
   priorities: string[],
-  risk: number,
+  _risk: number,
 ): DebateTurn[] {
   if (isDemo || decision.trim() === DEMO_DECISION) return DEMO_TURNS;
   const insights = deriveInsights(records);
@@ -124,15 +130,32 @@ export function debateTurns(
       tone: "sharp",
     };
   }
-  if (risk < 35) {
-    themed.splice(1, 0, {
-      speaker: "safe",
-      text: "Your own risk tolerance is already asking you to wait.",
-      tone: "calm",
-    });
-  }
   const mem = memoryTurns(insights);
-  return [...mem, ...themed].slice(0, 7);
+  return [...mem, ...themed].slice(0, 8);
+}
+
+export function dissentLine(winner: import("./council").Vote, votes: Record<PersonaId, import("./council").Vote>): { speaker: PersonaId; text: string } {
+  const dissenter = PERSONAS.find((p) => votes[p.id] !== winner) ?? PERSONAS[0];
+  const lines: Record<string, Partial<Record<PersonaId, string>>> = {
+    wait: { chaos: "Fine. But waiting is still a decision." },
+    do_it: { safe: "I want it on record that I object." },
+    hybrid: { regret: "Hybrid is just fear with better branding." },
+    dont: { later: 'Make sure "no" is relief, not avoidance.' },
+  };
+  const demoSafe = winner === "do_it" && dissenter.id === "safe"
+    ? "I want it on record that we have other deadlines."
+    : undefined;
+  const text =
+    demoSafe ??
+    lines[winner]?.[dissenter.id] ??
+    (winner === "do_it"
+      ? "I want it on record that I object."
+      : winner === "wait"
+        ? "Fine. But waiting is still a decision."
+        : winner === "dont"
+          ? 'Make sure "no" is relief, not avoidance.'
+          : "Hybrid is just fear with better branding.");
+  return { speaker: dissenter.id, text };
 }
 
 export { personaName, PERSONAS };

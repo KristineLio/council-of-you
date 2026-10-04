@@ -15,8 +15,8 @@ export type TallyResult = {
 export const DEMO_VOTES: Record<PersonaId, Vote> = {
   safe: "wait",
   chaos: "do_it",
-  success: "hybrid",
-  regret: "hybrid",
+  success: "do_it",
+  regret: "do_it",
   later: "hybrid",
 };
 
@@ -52,7 +52,7 @@ export function tally(votes: Record<PersonaId, Vote>, isDemo = false): TallyResu
     split = true;
   }
   const close = top - second === 1;
-  const confidence = isDemo ? 76 : confidenceFrom(top, split, close);
+  const confidence = isDemo ? 88 : confidenceFrom(top, split, close);
   const verdict =
     split && tied.length > 1 && !tied.includes("hybrid")
       ? `SPLIT — ${tied.map(voteLabel).join(" vs ")}`
@@ -91,7 +91,7 @@ export function uncomfortableTruth(opts: {
   insights: MemoryInsights;
   winner: Vote;
 }): string {
-  if (opts.isDemo) return "You're not asking for advice. You're asking for permission.";
+  if (opts.isDemo) return "You weren't deciding whether to enter. You were deciding whether this one was worth caring about.";
   if (opts.insights.ignoredCount >= 3) return "You keep asking the Council after you've already chosen.";
   if (opts.insights.ignoredCount >= 1) return "You keep asking the Council after you've already chosen.";
   if (opts.insights.repeatedPriority === "Ambition") {

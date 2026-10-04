@@ -1,4 +1,5 @@
-import type { MemoryRecord, PersonaId, Vote } from "./council";
+import type { MemoryRecord, OverrideReason, PersonaId, Vote } from "./council";
+import { reasonLabel } from "./council";
 
 export type MemoryInsights = {
   totalDecisions: number;
@@ -7,6 +8,8 @@ export type MemoryInsights = {
   ignoreRate: number;
   repeatedPriority?: string;
   recentIgnoredDecision?: MemoryRecord;
+  lastOverrideReason?: OverrideReason;
+  lastAccepted?: boolean;
   repeatedRiskPattern?: "low" | "medium" | "high";
 };
 
@@ -16,6 +19,9 @@ export function deriveInsights(records: MemoryRecord[]): MemoryInsights {
   const acceptedCount = records.filter((r) => r.action === "accepted").length;
   const ignoreRate = totalDecisions ? ignoredCount / totalDecisions : 0;
   const recentIgnoredDecision = records.find((r) => r.action === "ignored");
+  const last = records[0];
+  const lastOverrideReason = last?.action === "ignored" ? last.overrideReason : records.find((r) => r.overrideReason)?.overrideReason;
+  const lastAccepted = last?.action === "accepted";
 
   const counts = new Map<string, number>();
   for (const rec of records) {
@@ -45,6 +51,8 @@ export function deriveInsights(records: MemoryRecord[]): MemoryInsights {
     ignoreRate,
     repeatedPriority,
     recentIgnoredDecision,
+    lastOverrideReason,
+    lastAccepted,
     repeatedRiskPattern,
   };
 }
@@ -52,62 +60,35 @@ export function deriveInsights(records: MemoryRecord[]): MemoryInsights {
 export function memoryCue(insights: MemoryInsights): string | null {
   if (insights.totalDecisions === 0) return null;
   if (insights.ignoredCount > 0) {
-    return `THE COUNCIL REMEMBERS ${insights.ignoredCount} IGNORED VERDICT${insights.ignoredCount === 1 ? "" : "S"}.`;
+    return `THE COUNCIL REMEMBERS ${insights.ignoredCount} OVERRIDE${insights.ignoredCount === 1 ? "" : "S"}.`;
   }
+  return "THE COUNCIL REMEMBERS THAT YOU LISTENED.";
+}
+
+export function landingMemoryLine(insights: MemoryInsights, records: MemoryRecord[]): string | null {
+  if (insights.totalDecisions === 0) return null;
+  const last = records[0];
+  if (last?.action === "accepted") return "YOU LISTENED LAST TIME.";
+  if (last?.overrideReason === "worth_the_risk") return "LAST TIME: YOU CHOSE RISK.";
+  if (insights.ignoredCount > 0) return `THE COUNCIL REMEMBERS ${insights.ignoredCount} OVERRIDE${insights.ignoredCount === 1 ? "" : "S"}.`;
   return "THE COUNCIL REMEMBERS YOUR LAST DECISION.";
 }
 
-export function landingMemoryLine(insights: MemoryInsights): string | null {
-  if (insights.ignoredCount > 0) {
-    return `THE COUNCIL REMEMBERS: ${insights.ignoredCount} IGNORED`;
+export function whatTheyRemember(records: MemoryRecord[], insights: MemoryInsights): string {
+  const last = records[0];
+  if (last?.overrideReason) {
+    if (last.overrideReason === "worth_the_risk") return "Last time, you said the risk was worth it.";
+    if (last.overrideReason === "already_decided") return "You usually ask after you've already decided.";
+    if (last.overrideReason === "missed_something") return "You said they missed something.";
+    if (last.overrideReason === "curiosity") return "You wanted to see what happens.";
   }
-  return null;
-}
-
-export function patternDetected(insights: MemoryInsights): string {
-  if (insights.totalDecisions === 0) {
-    return "Too early to tell. The Council is watching.";
+  if (insights.ignoredCount >= 2) return `You have overruled the Council ${insights.ignoredCount} times.`;
+  if (insights.repeatedPriority === "Ambition" && records.some((r) => r.priorities.includes("Rest"))) {
+    return "You keep choosing ambition when rest is also on the table.";
   }
-  if (insights.ignoredCount >= 3) {
-    return `You have ignored ${insights.ignoredCount} verdict${insights.ignoredCount === 1 ? "" : "s"}.`;
-  }
-  if (insights.repeatedPriority === "Ambition") {
-    return "Ambition keeps showing up as the deciding factor.";
-  }
-  if (insights.repeatedRiskPattern === "high") {
-    return "Your risk tolerance keeps trending high.";
-  }
-  if (insights.repeatedPriority) {
-    return `${insights.repeatedPriority} has appeared across multiple decisions.`;
-  }
-  if (insights.ignoredCount > 0) {
-    return `You have ignored ${insights.ignoredCount} of your verdicts.`;
-  }
-  return "Too early to tell. The Council is watching.";
-}
-
-export function patternFromRecords(records: MemoryRecord[], insights: MemoryInsights): string {
-  const last4 = records.slice(0, 4);
-  if (last4.length >= 4) {
-    const ignored = last4.filter((r) => r.action === "ignored").length;
-    if (ignored >= 3) {
-      return `You have ignored ${ignored} of your last ${last4.length} verdicts.`;
-    }
-  }
-  const ambitionStreak = consecutivePriority(records, "Ambition");
-  if (ambitionStreak >= 4) {
-    return `Ambition has appeared in ${ambitionStreak} consecutive decisions.`;
-  }
-  return patternDetected(insights);
-}
-
-function consecutivePriority(records: MemoryRecord[], priority: string) {
-  let n = 0;
-  for (const r of records) {
-    if (r.priorities.includes(priority)) n += 1;
-    else break;
-  }
-  return n;
+  if (insights.lastAccepted) return "Last time you actually listened.";
+  if (insights.totalDecisions === 0) return "Too early to tell. They are watching.";
+  return "They are still learning your pattern.";
 }
 
 export function personaName(id: PersonaId) {
@@ -130,3 +111,5 @@ export function voteLabel(v: Vote) {
   };
   return map[v];
 }
+
+export { reasonLabel };
