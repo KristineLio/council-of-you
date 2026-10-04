@@ -11,9 +11,10 @@ import {
   type OverrideReason,
   type UserAction,
 } from "./council";
-import { debateTurns, dissentLine, type DebateTurn } from "./debate";
+import { generateCouncil, localCouncil, type AiCouncilResponse } from "./ai";
+import { debateTurns, type DebateTurn } from "./debate";
 import { deriveInsights, landingMemoryLine, memoryCue, personaName, voteLabel, whatTheyRemember } from "./memory";
-import { biggestDisagreement, mostPersuasive, tally, uncomfortableTruth, votesFor } from "./verdict";
+import { biggestDisagreement, mostPersuasive, tally, votesFor } from "./verdict";
 
 type Stage = "input" | "debate" | "vote" | "dissent" | "verdict" | "why" | "consequence" | "receipt";
 
@@ -31,6 +32,8 @@ export default function App() {
   const [copied, setCopied] = useState<"result" | "share" | null>(null);
   const [toast, setToast] = useState(false);
   const [showNoted, setShowNoted] = useState(false);
+  const [aiPack, setAiPack] = useState<AiCouncilResponse | null>(null);
+  const [calling, setCalling] = useState("");
   const canNativeShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
 
   useEffect(() => {
@@ -38,21 +41,28 @@ export default function App() {
   }, []);
 
   const insights = useMemo(() => deriveInsights(memory), [memory]);
-  const turns = useMemo(
-    () => debateTurns(decision, isDemo, memory, priorities, risk),
-    [decision, isDemo, memory, priorities, risk],
-  );
   const votes = useMemo(() => votesFor(decision, risk, priorities, isDemo), [decision, risk, priorities, isDemo]);
   const result = useMemo(() => tally(votes, isDemo), [votes, isDemo]);
-  const truth = useMemo(
-    () => uncomfortableTruth({ isDemo, decision, priorities, risk, insights, winner: result.winner }),
-    [isDemo, decision, priorities, risk, insights, result.winner],
+  const localPack = useMemo(
+    () =>
+      localCouncil({
+        decision,
+        priorities,
+        riskTolerance: risk,
+        voteResult: result.winner,
+        consensusStrength: result.confidence,
+        memory,
+      }),
+    [decision, priorities, risk, result.winner, result.confidence, memory],
   );
+  const pack = aiPack ?? localPack;
+  const turns = pack.turns.length ? pack.turns : debateTurns(decision, isDemo, memory, priorities, risk);
+  const dissent = pack.dissent;
+  const truth = pack.councilRead;
   const persuasive = useMemo(
     () => mostPersuasive(votes, result.winner, turns, priorities, insights),
     [votes, result.winner, turns, priorities, insights],
   );
-  const dissent = useMemo(() => dissentLine(result.winner, votes), [result.winner, votes]);
 
   useEffect(() => {
     if (stage !== "debate") return;
@@ -92,16 +102,34 @@ export default function App() {
     setAction(null);
     setOverrideReason(undefined);
     setCopied(null);
+    setAiPack(null);
+    setCalling("");
     setStage("debate");
   }
 
-  function convene() {
+  async function convene() {
     if (!decision.trim()) return;
     setIsDemo(false);
     setAction(null);
     setOverrideReason(undefined);
     setCopied(null);
+    setAiPack(null);
+    setCalling("Calling the Council…");
     setStage("debate");
+    window.setTimeout(() => setCalling((c) => (c ? "Chaos You is already interrupting." : c)), 700);
+    const generated = await generateCouncil(
+      {
+        decision: decision.trim(),
+        priorities,
+        riskTolerance: risk,
+        voteResult: result.winner,
+        consensusStrength: result.confidence,
+        memory,
+      },
+      votes,
+    );
+    setAiPack(generated);
+    setCalling("");
   }
 
   function persist(chosen: UserAction, reason?: OverrideReason) {
@@ -276,7 +304,8 @@ What would your future selves say?`;
             {shown.map((turn, i) => (
               <DebateBubble key={i} turn={turn} active={i === shown.length - 1} showSub={i === 0} />
             ))}
-            {thinking && !allShown && <p className="pl-4 text-[11px] tracking-[0.2em] text-[#9a9488]">thinking…</p>}
+            {calling && <p className="pl-4 text-[11px] tracking-[0.2em] text-[#9a9488]">{calling}</p>}
+            {thinking && !allShown && !calling && <p className="pl-4 text-[11px] tracking-[0.2em] text-[#9a9488]">thinking…</p>}
           </div>
           <div className="mt-8 flex flex-wrap gap-3">
             {!allShown && (
