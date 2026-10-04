@@ -44,15 +44,23 @@ body {
 .speaker-ring { animation: pulse-ring 1.6s ease-out infinite; }
 .warn-pulse { animation: warn-pulse 0.8s ease-out; border-radius: 24px; }
 .mutiny-vignette {
-  background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.55) 100%);
+  background:
+    radial-gradient(
+      ellipse at center,
+      rgba(201,168,106,0.035) 0%,
+      rgba(8,9,13,0.15) 34%,
+      rgba(0,0,0,0.72) 100%
+    );
+  border-radius: 28px;
 }
-.ring-tight > div {
-  transform: scale(0.86);
-  transform-origin: center;
-  transition: transform 0.7s ease;
+.mutiny-center {
+  border: 1px solid rgba(201,168,106,0.22);
+  border-radius: 18px;
+  padding: 10px 14px;
+  background: rgba(8,9,13,0.35);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .fade-up, .speaker-ring { animation: none; }
-  .ring-tight > div { transform: none; }
+  .transition-all { transition: none !important; }
 }

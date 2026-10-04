@@ -659,12 +659,42 @@ What would your future selves say?`;
   );
 }
 
-const RING: { id: (typeof PERSONAS)[number]["id"]; label: string; className: string }[] = [
-  { id: "success", label: "SUCCESS", className: "left-1/2 top-0 -translate-x-1/2" },
-  { id: "safe", label: "SAFE", className: "left-[8%] top-[18%] md:left-[12%]" },
-  { id: "later", label: "+1 YEAR", className: "right-[8%] top-[18%] md:right-[12%]" },
-  { id: "chaos", label: "CHAOS", className: "bottom-2 left-[18%] md:left-[22%]" },
-  { id: "regret", label: "REGRET", className: "bottom-2 right-[18%] md:right-[22%]" },
+const RING: {
+  id: (typeof PERSONAS)[number]["id"];
+  label: string;
+  normal: string;
+  mutiny: string;
+}[] = [
+  {
+    id: "success",
+    label: "SUCCESS",
+    normal: "left-1/2 top-0 -translate-x-1/2",
+    mutiny: "left-1/2 top-[12%] -translate-x-1/2",
+  },
+  {
+    id: "safe",
+    label: "SAFE",
+    normal: "left-[8%] top-[18%] md:left-[12%]",
+    mutiny: "left-[24%] top-[30%] md:left-[28%]",
+  },
+  {
+    id: "later",
+    label: "+1 YEAR",
+    normal: "right-[8%] top-[18%] md:right-[12%]",
+    mutiny: "right-[24%] top-[30%] md:right-[28%]",
+  },
+  {
+    id: "chaos",
+    label: "CHAOS",
+    normal: "bottom-2 left-[18%] md:left-[22%]",
+    mutiny: "bottom-[20%] left-[28%] md:left-[31%]",
+  },
+  {
+    id: "regret",
+    label: "REGRET",
+    normal: "bottom-2 right-[18%] md:right-[22%]",
+    mutiny: "bottom-[20%] right-[28%] md:right-[31%]",
+  },
 ];
 
 function CouncilRing({
@@ -680,22 +710,29 @@ function CouncilRing({
 }) {
   return (
     <div className="mb-8">
-      <div className={`relative mx-auto h-44 max-w-md overflow-hidden md:h-52 ${mutiny ? "ring-tight" : ""}`}>
+      <div className={`relative mx-auto max-w-md overflow-hidden ${mutiny ? "h-52 md:h-56" : "h-44 md:h-52"}`}>
         {RING.map((slot) => {
           const p = PERSONAS.find((x) => x.id === slot.id)!;
           const on = activeId === p.id;
           return (
-            <div key={p.id} className={`absolute flex flex-col items-center ${slot.className}`}>
+            <div
+              key={p.id}
+              className={`absolute flex flex-col items-center transition-all duration-700 ease-out ${mutiny ? slot.mutiny : slot.normal}`}
+            >
               <span
                 title={p.subtitle}
                 className={`grid h-10 w-10 place-items-center rounded-full text-sm font-semibold md:h-12 md:w-12 ${
-                  on ? "speaker-ring scale-110" : "opacity-80"
+                  on ? (mutiny ? "speaker-ring scale-[1.08]" : "speaker-ring scale-110") : "opacity-80"
                 }`}
                 style={{
                   background: p.color + "33",
                   color: p.color,
                   outline: `2px solid ${p.color}${on ? "cc" : "66"}`,
-                  boxShadow: replyTo === p.id ? `0 0 0 3px ${p.color}55` : undefined,
+                  boxShadow: on
+                    ? `0 0 18px ${p.color}88`
+                    : replyTo === p.id
+                      ? `0 0 0 3px ${p.color}55`
+                      : undefined,
                 }}
               >
                 {p.mark}
@@ -706,9 +743,13 @@ function CouncilRing({
             </div>
           );
         })}
-        <div className="absolute left-1/2 top-1/2 w-[70%] -translate-x-1/2 -translate-y-1/2 text-center">
+        <div
+          className={`absolute left-1/2 top-1/2 w-[70%] -translate-x-1/2 -translate-y-1/2 text-center transition-all duration-700 ease-out ${mutiny ? "mutiny-center scale-[0.96] opacity-75" : ""}`}
+        >
           <p className="text-[10px] tracking-[0.22em] text-[#9a9488]">YOUR DECISION</p>
-          <p className="mt-1 font-serif text-lg italic leading-tight text-[#c9a86a] md:text-xl">{decision}</p>
+          <p className={`mt-1 font-serif text-lg italic leading-tight md:text-xl ${mutiny ? "text-[#b89658]" : "text-[#c9a86a]"}`}>
+            {decision}
+          </p>
         </div>
       </div>
     </div>
