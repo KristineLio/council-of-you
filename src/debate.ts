@@ -131,7 +131,48 @@ export function debateTurns(
     };
   }
   const mem = memoryTurns(insights);
-  return [...mem, ...themed].slice(0, 8);
+  const later = themed.find((t) => t.speaker === "later");
+  const extra: DebateTurn[] = [];
+  if (!themed.some((t) => t.replyTo)) {
+    extra.push({
+      speaker: "safe",
+      text: "That is not how final works.",
+      replyTo: "chaos",
+      tone: "sharp",
+    });
+    extra.push({
+      speaker: "chaos",
+      text: "It is in startups.",
+      replyTo: "safe",
+      tone: "funny",
+    });
+  }
+  if (priorities.includes("Rest")) {
+    extra.push({
+      speaker: "regret",
+      text: "Rest is on the table. Pretending it is not is already a vote.",
+      tone: "sharp",
+    });
+  }
+  const merged = [...mem, ...themed, ...extra];
+  if (later && !merged.slice(0, 9).some((t) => t.speaker === "later")) merged.push(later);
+  const unique: DebateTurn[] = [];
+  for (const t of merged) {
+    if (!unique.some((u) => u.speaker === t.speaker && u.text === t.text)) unique.push(t);
+  }
+  const speakers = new Set(unique.map((t) => t.speaker));
+  if (speakers.size < 4) {
+    unique.push({ speaker: "regret", text: "Name the cost you are refusing to look at.", tone: "sharp" });
+  }
+  while (unique.length < 7) {
+    unique.push({
+      speaker: unique.length % 2 ? "chaos" : "safe",
+      text: unique.length % 2 ? "And yet here we are." : "That is exactly how we got here.",
+      replyTo: unique.length % 2 ? "safe" : "chaos",
+      tone: unique.length % 2 ? "funny" : "sharp",
+    });
+  }
+  return unique.slice(0, 9);
 }
 
 export function dissentLine(winner: import("./council").Vote, votes: Record<PersonaId, import("./council").Vote>): { speaker: PersonaId; text: string } {

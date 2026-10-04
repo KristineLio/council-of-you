@@ -76,11 +76,9 @@ export default function App() {
     return () => window.clearTimeout(pause);
   }, [stage, visibleTurns, turns.length, isDemo]);
 
-  useEffect(() => {
-    if (stage !== "dissent") return;
-    const t = window.setTimeout(() => setStage("verdict"), 1400);
-    return () => window.clearTimeout(t);
-  }, [stage]);
+  function goFromDissent() {
+    setStage((s) => (s === "dissent" ? "verdict" : s));
+  }
 
   function togglePriority(p: string) {
     setPriorities((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]));
@@ -322,7 +320,7 @@ What would your future selves say?`;
           <p className="text-xs tracking-[0.28em] text-[#e07a5f]">THE DISSENT</p>
           <p className="mt-6 text-sm tracking-[0.16em] text-[#9a9488]">{dissentSpeaker.name}</p>
           <p className="mx-auto mt-4 max-w-lg font-serif text-3xl">{dissent.text}</p>
-          <button type="button" onClick={() => setStage("verdict")} className="mt-10 text-xs tracking-[0.2em] text-[#9a9488]">
+          <button type="button" onClick={goFromDissent} className="mt-10 text-xs tracking-[0.2em] text-[#9a9488]">
             Continue
           </button>
         </section>
@@ -332,7 +330,8 @@ What would your future selves say?`;
         <section className="fade-up text-center">
           <p className="text-xs tracking-[0.28em] text-[#c9a86a]">THE COUNCIL HAS DECIDED</p>
           <h2 className="mt-4 font-serif text-5xl">{result.verdict}</h2>
-          <p className="mt-3 text-[#c9a86a]">Confidence: {result.confidence}%</p>
+          <p className="mt-3 text-[#c9a86a]">Consensus strength: {result.confidence}%</p>
+          <p className="mt-1 text-[11px] text-[#9a9488]">How strongly the Council converged on this outcome.</p>
           <div className="mx-auto mt-8 max-w-md rounded-2xl border border-white/10 p-5 text-left">
             <p className="text-[11px] tracking-[0.22em] text-[#e07a5f]">COUNCIL READ</p>
             <p className="mt-3 font-serif text-2xl leading-snug">{truth}</p>
@@ -408,7 +407,7 @@ What would your future selves say?`;
               </p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Confidence</p>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-[#9a9488]">Consensus strength</p>
               <p className="mt-1 text-lg">{result.confidence}%</p>
             </div>
             <div>
@@ -430,7 +429,7 @@ What would your future selves say?`;
           <p className="mt-1 text-center text-[10px] tracking-[0.28em] text-[#9a9488]">THE COUNCIL OF YOU</p>
           <div className="mt-6 flex flex-wrap gap-2">
             <button type="button" onClick={() => copyText("result")} className="flex-1 rounded-full bg-[#ece6d8] py-3 text-sm font-medium text-[#08090d]">
-              {copied === "result" ? "COPIED ✓" : "COPY RESULT"}
+              {copied === "result" ? "COPIED ✓" : "COPY SUMMARY"}
             </button>
             <button type="button" onClick={() => copyText("share")} className="flex-1 rounded-full border border-[#c9a86a] py-3 text-sm text-[#c9a86a]">
               {copied === "share" ? "COPIED ✓" : "COPY SHARE CARD"}
@@ -456,12 +455,24 @@ What would your future selves say?`;
               NEW DECISION
             </button>
           </div>
-          {toast && <p className="mt-3 text-center text-[11px] tracking-[0.18em] text-[#c9a86a]">Copied to clipboard</p>}
+          {toast && (
+            <p role="status" className="mt-3 text-center text-[11px] tracking-[0.18em] text-[#c9a86a]">
+              Copied to clipboard
+            </p>
+          )}
         </section>
       )}
     </div>
   );
 }
+
+const RING: { id: (typeof PERSONAS)[number]["id"]; label: string; className: string }[] = [
+  { id: "success", label: "SUCCESS", className: "left-1/2 top-0 -translate-x-1/2" },
+  { id: "safe", label: "SAFE", className: "left-[8%] top-[18%] md:left-[12%]" },
+  { id: "later", label: "+1 YEAR", className: "right-[8%] top-[18%] md:right-[12%]" },
+  { id: "chaos", label: "CHAOS", className: "bottom-2 left-[18%] md:left-[22%]" },
+  { id: "regret", label: "REGRET", className: "bottom-2 right-[18%] md:right-[22%]" },
+];
 
 function CouncilRing({
   activeId,
@@ -474,32 +485,37 @@ function CouncilRing({
 }) {
   return (
     <div className="mb-8">
-      <div className="mb-4 overflow-x-hidden">
-        <div className="flex justify-center gap-2 md:gap-4">
-          {PERSONAS.map((p) => (
-            <div key={p.id} className="flex flex-col items-center">
+      <div className="relative mx-auto h-44 max-w-md overflow-hidden md:h-52">
+        {RING.map((slot) => {
+          const p = PERSONAS.find((x) => x.id === slot.id)!;
+          const on = activeId === p.id;
+          return (
+            <div key={p.id} className={`absolute flex flex-col items-center ${slot.className}`}>
               <span
                 title={p.subtitle}
                 className={`grid h-10 w-10 place-items-center rounded-full text-sm font-semibold md:h-12 md:w-12 ${
-                  activeId === p.id ? "speaker-ring" : ""
+                  on ? "speaker-ring scale-110" : "opacity-80"
                 }`}
                 style={{
                   background: p.color + "33",
                   color: p.color,
-                  boxShadow: replyTo === p.id ? `0 0 0 2px ${p.color}66` : undefined,
+                  outline: `2px solid ${p.color}${on ? "cc" : "66"}`,
+                  boxShadow: replyTo === p.id ? `0 0 0 3px ${p.color}55` : undefined,
                 }}
               >
                 {p.mark}
               </span>
-              <span className="mt-1 max-w-[4.5rem] text-center text-[9px] leading-tight text-[#9a9488] md:max-w-none md:text-[10px]">
-                {p.name}
+              <span className={`mt-1 text-[10px] tracking-[0.14em] ${on ? "text-[#ece6d8]" : "text-[#9a9488]"}`}>
+                {slot.label}
               </span>
             </div>
-          ))}
+          );
+        })}
+        <div className="absolute left-1/2 top-1/2 w-[70%] -translate-x-1/2 -translate-y-1/2 text-center">
+          <p className="text-[10px] tracking-[0.22em] text-[#9a9488]">YOUR DECISION</p>
+          <p className="mt-1 font-serif text-lg italic leading-tight text-[#c9a86a] md:text-xl">{decision}</p>
         </div>
       </div>
-      <p className="text-center text-[10px] tracking-[0.22em] text-[#9a9488]">YOUR DECISION</p>
-      <p className="mt-2 text-center font-serif text-2xl italic text-[#c9a86a]">{decision}</p>
     </div>
   );
 }
@@ -508,10 +524,13 @@ function DebateBubble({ turn, active, showSub }: { turn: DebateTurn; active: boo
   const p = PERSONAS.find((x) => x.id === turn.speaker)!;
   return (
     <article
-      className={`fade-up rounded-2xl border p-4 transition ${turn.replyTo ? "ml-4 border-l-2 md:ml-8" : ""} ${
-        active ? "speaker-ring border-[#c9a86a] bg-white/8" : "border-white/10 bg-white/4 opacity-70"
+      className={`fade-up rounded-2xl border border-white/10 bg-white/4 p-4 transition ${turn.replyTo ? "ml-4 md:ml-8" : ""} ${
+        active ? "speaker-ring" : "opacity-75"
       }`}
-      style={turn.replyTo ? { borderLeftColor: p.color } : undefined}
+      style={{
+        borderLeft: `3px solid ${p.color}`,
+        boxShadow: active ? `0 0 18px ${p.color}33` : undefined,
+      }}
     >
       <div className="mb-2 flex items-center gap-3">
         <span className="grid h-9 w-9 place-items-center rounded-full text-sm font-semibold" style={{ background: p.color + "33", color: p.color }}>
