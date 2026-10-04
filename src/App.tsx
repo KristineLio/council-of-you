@@ -17,6 +17,7 @@ export default function App() {
   const [memory, setMemory] = useState<MemoryRecord[]>([]);
   const [action, setAction] = useState<UserAction | null>(null);
   const [copied, setCopied] = useState<"result" | "share" | null>(null);
+  const [toast, setToast] = useState(false);
   const [ignoreBeat, setIgnoreBeat] = useState(0);
   const canNativeShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
 
@@ -109,8 +110,9 @@ export default function App() {
       window.setTimeout(() => persist(chosen), 900);
       return;
     }
-    window.setTimeout(() => setIgnoreBeat(1), 350);
-    window.setTimeout(() => persist(chosen), 950);
+    window.setTimeout(() => setIgnoreBeat(1), 400);
+    window.setTimeout(() => setIgnoreBeat(2), 900);
+    window.setTimeout(() => persist(chosen), 2200);
   }
 
   const shareBody = `MY COUNCIL EXPOSED ME
@@ -145,6 +147,11 @@ What would your Council say?`;
     try {
       await navigator.clipboard.writeText(kind === "share" ? shareBody : resultText);
       setCopied(kind);
+      setToast(true);
+      window.setTimeout(() => {
+        setCopied(null);
+        setToast(false);
+      }, 1800);
     } catch {
       setCopied(null);
     }
@@ -174,9 +181,6 @@ What would your Council say?`;
           <p className="text-[11px] tracking-[0.28em] text-[#c9a86a]">THE COUNCIL OF YOU</p>
           <h1 className="mt-2 font-serif text-4xl leading-none md:text-5xl">Five versions of you. One decision.</h1>
           <p className="mt-3 max-w-lg text-[#9a9488]">They'll argue. They'll vote. And they'll remember when you ignore them.</p>
-          {stage === "input" && (
-            <p className="mt-2 max-w-lg text-sm text-[#7a7468]">Ask once. Ignore them if you want. They'll remember next time.</p>
-          )}
         </div>
         {landCue && stage === "input" && (
           <div className="rounded-full border border-[#c9a86a]/40 px-3 py-1 text-[10px] tracking-[0.16em] text-[#c9a86a]">
@@ -196,6 +200,7 @@ What would your Council say?`;
               className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-white/5 p-4 font-serif text-2xl outline-none focus:border-[#c9a86a]"
               placeholder="Should I…?"
             />
+            <p className="mt-2 text-sm text-[#7a7468]">Type a real decision, or try the demo first.</p>
           </label>
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-[#9a9488]">Priorities</p>
@@ -213,8 +218,13 @@ What would your Council say?`;
             </div>
           </div>
           <label className="block">
-            <span className="text-xs uppercase tracking-[0.18em] text-[#9a9488]">Risk tolerance — {risk}</span>
-            <input type="range" min={0} max={100} value={risk} onChange={(e) => setRisk(Number(e.target.value))} className="mt-3 w-full accent-[#c9a86a]" />
+            <span className="text-xs uppercase tracking-[0.18em] text-[#9a9488]">Risk tolerance</span>
+            <div className="mt-3 flex items-center justify-between text-[11px] tracking-[0.2em] text-[#9a9488]">
+              <span>SAFE</span>
+              <span className="text-[#c9a86a]">{risk}</span>
+              <span>RECKLESS</span>
+            </div>
+            <input type="range" min={0} max={100} value={risk} onChange={(e) => setRisk(Number(e.target.value))} className="mt-2 w-full accent-[#c9a86a]" />
           </label>
           <div className="flex flex-wrap gap-3">
             <button type="button" onClick={convene} className="rounded-full bg-[#ece6d8] px-6 py-3 font-medium text-[#08090d]">
@@ -321,7 +331,7 @@ What would your Council say?`;
           ) : (
             <>
               {ignoreBeat >= 1 && <p className="mt-6 font-serif text-3xl">The Council will remember this.</p>}
-              {ignoreBeat >= 1 && (
+              {ignoreBeat >= 2 && (
                 <p className="mt-4 text-sm tracking-[0.16em] text-[#e07a5f]">
                   {insights.ignoredCount >= 1 ? `That's ${nextIgnored}.` : `Ignored verdicts: ${nextIgnored}`}
                 </p>
@@ -365,10 +375,10 @@ What would your Council say?`;
           <p className="mt-1 text-center text-[10px] tracking-[0.28em] text-[#9a9488]">THE COUNCIL OF YOU</p>
           <div className="mt-6 flex flex-wrap gap-2">
             <button type="button" onClick={() => copyText("result")} className="flex-1 rounded-full bg-[#ece6d8] py-3 text-sm font-medium text-[#08090d]">
-              {copied === "result" ? "COPIED" : "COPY RESULT"}
+              {copied === "result" ? "COPIED ✓" : "COPY RESULT"}
             </button>
             <button type="button" onClick={() => copyText("share")} className="flex-1 rounded-full border border-[#c9a86a] py-3 text-sm text-[#c9a86a]">
-              {copied === "share" ? "COPIED" : "COPY SHARE CARD"}
+              {copied === "share" ? "COPIED ✓" : "COPY SHARE CARD"}
             </button>
             {canNativeShare && (
               <button type="button" onClick={nativeShare} className="w-full rounded-full border border-white/15 py-3 text-sm">
@@ -390,6 +400,7 @@ What would your Council say?`;
               NEW DECISION
             </button>
           </div>
+          {toast && <p className="mt-3 text-center text-[11px] tracking-[0.18em] text-[#c9a86a]">Copied to clipboard</p>}
         </section>
       )}
     </div>
