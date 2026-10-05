@@ -18,5 +18,5 @@ for (const file of readdirSync(assetsDir)) {
 }
 
 html = html.replace(/^<!-- aha-build-id:.*\n/, "");
-html = `<!-- aha-build-id: bmuvoyzzp8hpirmab -->\n${html}`;
+html = `<!-- aha-build-id: bmuvqdutjhpb705e9 -->\n${html}`;
 writeFileSync(join(dist, "index.html"), html);

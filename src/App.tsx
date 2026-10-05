@@ -194,7 +194,7 @@ export default function App() {
   function startOverrule() {
     setAction("ignored");
     setShowNoted(false);
-    const fire = shouldMutiny({
+    const fire = isDemo || shouldMutiny({
       isDemo,
       decision,
       consensus: result.confidence,
